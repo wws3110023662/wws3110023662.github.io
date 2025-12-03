@@ -54,7 +54,7 @@
             👆 单指：樱花+开开心心<br>
             ✌️ 双指：樱花+好好爱自己<br>
             🤟 三指：花瓣+今天很哇塞<br>
-            🖐 张手：变爱心<br>
+            🖐 张手：变爱心 (跳动)<br>
             ✊ 握拳：爆炸+我真的很棒
         </div>
     </div>
@@ -76,6 +76,7 @@
     let isExploding = false;
     let explosionVelocities = [];
     let isTextState = false; 
+    let isHeartState = false; // 新增爱心状态判断
     
     // 画布相关
     const canvas = document.createElement('canvas');
@@ -86,7 +87,7 @@
     let gestureFrameCount = 0;
     const GESTURE_THRESHOLD = 10; 
 
-    // --- 新增预设文本 ---
+    // --- 预设文本 ---
     const PRESET_TEXTS = {
         'one': '开开心心',
         'two': '好好爱自己',
@@ -94,7 +95,7 @@
         'fist': '我真的很棒'
     };
 
-    // --- 新增预设颜色 ---
+    // --- 预设颜色 ---
     const PRESET_COLORS = {
         'cherry': 0xff69b4, // 樱花粉
         'petal': 0xff4500,  // 花瓣红
@@ -108,7 +109,7 @@
     animate();
 
     // =========================================================
-    // 1. THREE.JS 粒子系统部分 (大部分保持不变)
+    // 1. THREE.JS 粒子系统部分
     // =========================================================
     function initThree() {
         scene = new THREE.Scene();
@@ -196,24 +197,30 @@
         return validPositions;
     }
 
+    // --- 【修改】爱心粒子位置生成：增加Z轴深度，使其更饱满 ---
     function getHeartPositions() {
         const points = [];
-        for (let i = 0; i < 9000; i++) {
+        const particleCountPerHeart = 9000;
+        for (let i = 0; i < particleCountPerHeart; i++) {
             const t = Math.random() * Math.PI * 2;
             const r = Math.sqrt(Math.random());
             let x = 16 * Math.pow(Math.sin(t), 3);
             let y = 13 * Math.cos(t) - 5 * Math.cos(2*t) - 2 * Math.cos(3*t) - Math.cos(4*t);
-            let z = r * 6 * Math.sin(Math.random() * Math.PI * 2) * Math.cos(t); 
+            
+            // 增强 Z 轴随机深度 (饱满度)
+            let z = r * 10 * Math.sin(Math.random() * Math.PI * 2) * Math.cos(t); 
+            
             x *= 0.35; y *= 0.35; z *= 0.35; y += 2;
             points.push({x, y, z});
         }
         return points;
     }
 
-    // --- 变形核心逻辑 (保持不变) ---
+    // --- 变形核心逻辑 (新增爱心状态控制) ---
     function morphTo(newPoints, colorHex, isText = false) {
         isExploding = false;
         isTextState = isText; 
+        isHeartState = (newPoints === getHeartPositions); // 简易判断是否为心形目标
                 
         const colorObj = new THREE.Color(colorHex);
 
@@ -243,19 +250,26 @@
             })
             .easing(TWEEN.Easing.Quadratic.Out)
             .start();
+            
+        // 确保粒子回到初始缩放
+        particles.scale.set(1, 1, 1);
     }
 
-    // --- 【修改】动作封装：直接传入预设键值 ---
+    // --- 预设动作封装 ---
     function showPresetText(key, color) {
+        isHeartState = false; // 退出爱心状态
         const text = PRESET_TEXTS[key];
         morphTo(getTextPositions(text, 100), color, true); 
     }
 
     function morphToHeart() {
+        // 使用 morphTo 函数，并设置 isHeartState 为 true
         morphTo(getHeartPositions(), PRESET_COLORS.heart, false); 
+        isHeartState = true; 
     }
 
     function calculateSpherePositions() {
+        isHeartState = false; // 退出爱心状态
         const points = [];
         for (let i=0; i<5000; i++) { 
             points.push({x:(Math.random()-0.5)*30, y:(Math.random()-0.5)*30, z:(Math.random()-0.5)*30});
@@ -264,6 +278,7 @@
     }
 
     function explodeAndShowMsg() {
+        isHeartState = false; // 退出爱心状态
         if (isExploding) return;
         isExploding = true;
         isTextState = false; 
@@ -275,13 +290,12 @@
         }
 
         setTimeout(() => {
-            // 爆炸后显示 “我真的很棒”
             morphTo(getTextPositions(PRESET_TEXTS.fist, 60), PRESET_COLORS.final, true); 
         }, 1200);
     }
-
+    
     // =========================================================
-    // 2. AI 手势识别部分 (核心修改：重新启用三指逻辑)
+    // 2. AI 手势识别部分 (保持不变)
     // =========================================================
     function initMediaPipe() {
         const videoElement = document.getElementById('video-feed');
@@ -320,22 +334,20 @@
             const lm = results.multiHandLandmarks[0];
             let fingerCount = 0;
                         
-            // 简易手指计数逻辑 (保持不变)
             if (lm[8].y < lm[6].y) fingerCount++; // 食指
             if (lm[12].y < lm[10].y) fingerCount++; // 中指
             if (lm[16].y < lm[14].y) fingerCount++; // 无名指
             if (lm[20].y < lm[18].y) fingerCount++; // 小指
             if (Math.abs(lm[4].x - lm[0].x) > Math.abs(lm[3].x - lm[0].x)) fingerCount++; // 拇指
 
-            // --- 【修改】状态分类 (重新启用三指) ---
             if (fingerCount === 0) detectedGesture = 'fist';
             else if (fingerCount === 1) detectedGesture = 'one';
             else if (fingerCount === 2) detectedGesture = 'two';
-            else if (fingerCount === 3) detectedGesture = 'three'; // 启用三指
+            else if (fingerCount === 3) detectedGesture = 'three'; 
             else if (fingerCount >= 4) detectedGesture = 'open'; 
         }
 
-        // 防抖逻辑 (保持不变)
+        // 防抖逻辑
         if (detectedGesture === lastGesture) {
             gestureFrameCount++;
         } else {
@@ -355,20 +367,20 @@
             case 'one':
                 statusDiv.innerText = "👆 识别：樱花+开开心心";
                 statusDiv.style.color = "#ffb6c1";
-                showPresetText('one', PRESET_COLORS.cherry); // 樱花粉
+                showPresetText('one', PRESET_COLORS.cherry); 
                 break;
             case 'two':
                 statusDiv.innerText = "✌️ 识别：樱花+好好爱自己";
                 statusDiv.style.color = "#ffb6c1";
-                showPresetText('two', PRESET_COLORS.cherry); // 樱花粉
+                showPresetText('two', PRESET_COLORS.cherry); 
                 break;
             case 'three':
                 statusDiv.innerText = "🤟 识别：花瓣+今天很哇塞";
                 statusDiv.style.color = "#ff4500";
-                showPresetText('three', PRESET_COLORS.petal); // 花瓣红
+                showPresetText('three', PRESET_COLORS.petal); 
                 break;
             case 'open':
-                statusDiv.innerText = "🖐 识别：变爱心";
+                statusDiv.innerText = "🖐 识别：变爱心 (跳动)";
                 statusDiv.style.color = "#ff0044";
                 morphToHeart();
                 break;
@@ -381,7 +393,7 @@
     }
 
     // =========================================================
-    // 3. 动画循环 (保持不变)
+    // 3. 动画循环 (新增爱心跳动逻辑)
     // =========================================================
     function animate() {
         requestAnimationFrame(animate);
@@ -389,10 +401,20 @@
 
         const positions = geometry.attributes.position.array;
                 
+        // 智能旋转/回正逻辑
         if (isTextState) {
             const targetRotation = Math.sin(Date.now() * 0.001) * 0.2;
             particles.rotation.y += (targetRotation - particles.rotation.y) * 0.05;
+            particles.scale.set(1, 1, 1); // 确保文字状态不跳动
+        } else if (isHeartState) {
+            // 【新增】爱心跳动逻辑
+            const heartBeatScale = 1.0 + Math.abs(Math.sin(Date.now() * 0.005)) * 0.1; // 1.0到1.1之间跳动
+            particles.scale.set(heartBeatScale, heartBeatScale, heartBeatScale);
+            particles.rotation.y += 0.002;
+            particles.rotation.y = particles.rotation.y % (Math.PI * 2);
         } else {
+            // 非文字/非爱心状态：全景匀速旋转
+            particles.scale.set(1, 1, 1);
             particles.rotation.y += 0.002;
             particles.rotation.y = particles.rotation.y % (Math.PI * 2);
         }
