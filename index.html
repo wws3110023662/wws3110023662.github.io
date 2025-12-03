@@ -78,19 +78,20 @@
         let gestureFrameCount = 0;
         const GESTURE_THRESHOLD = 10;
 
+        // 初始化摄像头
         const videoElement = document.getElementById('video-feed');
         const hands = new Hands({ locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}` });
 
         hands.setOptions({
             maxNumHands: 1,
             modelComplexity: 1,
-            minDetectionConfidence: 0.6,
-            minTrackingConfidence: 0.6
+            minDetectionConfidence: 0.5,  // 降低阈值
+            minTrackingConfidence: 0.5   // 降低阈值
         });
 
         hands.onResults(onHandsResults);
 
-        // 加载摄像头
+        // 启动摄像头
         const cameraUtils = new Camera(videoElement, {
             onFrame: async () => { await hands.send({ image: videoElement }); },
             width: 640, height: 480
@@ -111,21 +112,20 @@
                 const lm = results.multiHandLandmarks[0];
                 let fingerCount = 0;
 
-                // 确定各个手指的状态
+                // 通过手指弯曲判断识别手势
                 if (lm[8].y < lm[6].y) fingerCount++; // 食指
                 if (lm[12].y < lm[10].y) fingerCount++; // 中指
                 if (lm[16].y < lm[14].y) fingerCount++; // 无名指
                 if (lm[20].y < lm[18].y) fingerCount++; // 小指
                 if (Math.abs(lm[4].x - lm[0].x) > Math.abs(lm[3].x - lm[0].x)) fingerCount++; // 拇指
 
-                // 更新手势
+                // 手势分类
                 if (fingerCount === 1) detectedGesture = 'one';
                 else if (fingerCount === 2) detectedGesture = 'two';
                 else if (fingerCount === 3) detectedGesture = 'three';
                 else if (fingerCount >= 4) detectedGesture = 'open';
             }
 
-            console.log('Detected gesture:', detectedGesture);
             if (detectedGesture === lastGesture) {
                 gestureFrameCount++;
             } else {
@@ -191,7 +191,7 @@
             const material = new THREE.PointsMaterial({ size: 0.1, color: 0xff00ff, transparent: true });
             const particleSystem = new THREE.Points(geometry, material);
             document.body.appendChild(particleSystem);
-            
+
             // 动画效果
             function animate() {
                 particles.forEach(p => p.y -= 0.01);
@@ -218,7 +218,7 @@
             const material = new THREE.PointsMaterial({ size: 0.1, color: 0xffaa00, transparent: true });
             const particleSystem = new THREE.Points(geometry, material);
             document.body.appendChild(particleSystem);
-            
+
             // 动画效果
             function animate() {
                 particles.forEach(p => p.y -= 0.01);
@@ -228,10 +228,20 @@
             animate();
         }
 
-        // 爱心效果
-        function createHeartShape() {
-            const particleCount = 200;
-            const particles = [];
-            for (let i = 0; i < particleCount; i++) {
-                const particle = new THREE.Vector3(
-                   
+        // 显示文字
+        function showMessage(message) {
+            const messageDiv = document.createElement('div');
+            messageDiv.classList.add('message');
+            messageDiv.textContent = message;
+            document.body.appendChild(messageDiv);
+
+            // 2秒后消失
+            setTimeout(() => {
+                messageDiv.remove();
+            }, 2000);
+        }
+
+    </script>
+
+</body>
+</html>
