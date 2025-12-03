@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>手势识别与粒子效果</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background-color: #050505;
+            font-family: 'Microsoft YaHei', sans-serif;
+            -webkit-user-select: none;
+            user-select: none;
+        }
+
+        #hud-panel {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            background: rgba(0, 0, 0, 0.6);
+            padding: 15px;
+            border-radius: 8px;
+            border: 1px solid rgba(0, 255, 255, 0.3);
+            color: #00ffff;
+            pointer-events: none;
+            z-index: 10;
+            width: 220px;
+        }
+
+        #hud-status {
+            font-size: 18px;
+            font-weight: bold;
+            margin-bottom: 5px;
+        }
+
+        #video-feed {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 640px;
+            height: 480px;
+            z-index: -1;
+            pointer-events: none;
+        }
+
+        .message {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: #ffffff;
+            font-size: 30px;
+            font-weight: bold;
+            animation: fadeOut 2s forwards;
+        }
+
+        @keyframes fadeOut {
+            0% { opacity: 1; }
+            100% { opacity: 0; }
+        }
+    </style>
+</head>
+<body>
+
+    <div id="hud-panel">
+        <div id="hud-status">等待手势...</div>
+    </div>
+
+    <video id="video-feed" playsinline muted></video>
+
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+
+    <script>
+        let lastGesture = 'none';
+        let gestureFrameCount = 0;
+        const GESTURE_THRESHOLD = 10;
+
+        // 初始化摄像头
+        const videoElement = document.getElementById('video-feed');
+        const hands = new Hands({ locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}` });
+
+        hands.setOptions({
+            maxNumHands: 1,
+            modelComplexity: 1,
+            minDetectionConfidence: 0.5,  // 降低阈值
+            minTrackingConfidence: 0.5   // 降低阈值
+        });
+
+        hands.onResults(onHandsResults);
+
+        // 启动摄像头
+        const cameraUtils = new Camera(videoElement, {
+            onFrame: async () => { await hands.send({ image: videoElement }); },
+            width: 640, height: 480
+        });
+
+        cameraUtils.start()
+            .then(() => {
+                console.log("摄像头启动成功");
+            })
+            .catch(err => {
+                console.error("摄像头启动失败:", err);
+                alert("摄像头启动失败，请检查权限或 HTTPS 环境");
+            });
+
+        function onHandsResults(results) {
+            let detectedGesture = 'none';
+            if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
+                const lm = results.multiHandLandmarks[0];
+                let fingerCount = 0;
+
+                // 通过手指弯曲判断识别手势
+                if (lm[8].y < lm[6].y) fingerCount++; // 食指
+                if (lm[12].y < lm[10].y) fingerCount++; // 中指
+                if (lm[16].y < lm[14].y) fingerCount++; // 无名指
+                if (lm[20].y < lm[18].y) fingerCount++; // 小指
+                if (Math.abs(lm[4].x - lm[0].x) > Math.abs(lm[3].x - lm[0].x)) fingerCount++; // 拇指
+
+                // 手势分类
+                if (fingerCount === 1) detectedGesture = 'one';
+                else if (fingerCount === 2) detectedGesture = 'two';
+                else if (fingerCount === 3) detectedGesture = 'three';
+                else if (fingerCount >= 4) detectedGesture = 'open';
+            }
+
+            if (detectedGesture === lastGesture) {
+                gestureFrameCount++;
+            } else {
+                gestureFrameCount = 0;
+                lastGesture = detectedGesture;
+            }
+
+            if (gestureFrameCount === GESTURE_THRESHOLD) {
+                handleGestureAction(detectedGesture);
+            }
+        }
+
+        function handleGestureAction(gesture) {
+            const statusDiv = document.getElementById('hud-status');
+
+            switch(gesture) {
+                case 'one':
+                    statusDiv.innerText = "👆 识别：单指 - 樱花雨";
+                    statusDiv.style.color = "#ff00ff";
+                    createCherryBlossomRain();
+                    showMessage("开开心心");
+                    break;
+                case 'two':
+                    statusDiv.innerText = "✌️ 识别：双指 - 樱花雨";
+                    statusDiv.style.color = "#ff00ff";
+                    createCherryBlossomRain();
+                    showMessage("好好爱自己");
+                    break;
+                case 'three':
+                    statusDiv.innerText = "✋ 识别：三指 - 花瓣雨";
+                    statusDiv.style.color = "#ff00ff";
+                    createPetalRain();
+                    showMessage("今天很哇塞");
+                    break;
+                case 'open':
+                    statusDiv.innerText = "🖐 识别：张手 - 爱心";
+                    statusDiv.style.color = "#ff0044";
+                    createHeartShape();
+                    break;
+                case 'fist':
+                    statusDiv.innerText = "✊ 识别：握拳 - 爆炸";
+                    statusDiv.style.color = "#ffaa00";
+                    triggerExplosion();
+                    showMessage("我真的很棒");
+                    break;
+            }
+        }
+
+        // 樱花雨效果
+        function createCherryBlossomRain() {
+            const particleCount = 200;
+            const particles = [];
+            for (let i = 0; i < particleCount; i++) {
+                const particle = new THREE.Vector3(
+                    Math.random() * 2 - 1,
+                    Math.random() * 2 - 1,
+                    Math.random() * 2 - 1
+                );
+                particles.push(particle);
+            }
+
+            const geometry = new THREE.BufferGeometry().setFromPoints(particles);
+            const material = new THREE.PointsMaterial({ size: 0.1, color: 0xff00ff, transparent: true });
+            const particleSystem = new THREE.Points(geometry, material);
+            document.body.appendChild(particleSystem);
+
+            // 动画效果
+            function animate() {
+                particles.forEach(p => p.y -= 0.01);
+                geometry.attributes.position.needsUpdate = true;
+                requestAnimationFrame(animate);
+            }
+            animate();
+        }
+
+        // 花瓣雨效果
+        function createPetalRain() {
+            const particleCount = 200;
+            const particles = [];
+            for (let i = 0; i < particleCount; i++) {
+                const particle = new THREE.Vector3(
+                    Math.random() * 2 - 1,
+                    Math.random() * 2 - 1,
+                    Math.random() * 2 - 1
+                );
+                particles.push(particle);
+            }
+
+            const geometry = new THREE.BufferGeometry().setFromPoints(particles);
+            const material = new THREE.PointsMaterial({ size: 0.1, color: 0xffaa00, transparent: true });
+            const particleSystem = new THREE.Points(geometry, material);
+            document.body.appendChild(particleSystem);
+
+            // 动画效果
+            function animate() {
+                particles.forEach(p => p.y -= 0.01);
+                geometry.attributes.position.needsUpdate = true;
+                requestAnimationFrame(animate);
+            }
+            animate();
+        }
+
+        // 爱心效果
+        function createHeartShape() {
+            // 自定义爱心粒子效果
+            alert("生成爱心形状的粒子效果");
+        }
+
+        // 爆炸效果
+        function triggerExplosion() {
+            alert("生成爆炸效果");
+        }
+
+        // 显示文字
+        function showMessage(message) {
+            const messageDiv = document.createElement('div');
+            messageDiv.classList.add('message');
+            messageDiv.textContent = message;
+            document.body.appendChild(messageDiv);
+
+            // 2秒后消失
+            setTimeout(() => {
+                messageDiv.remove();
+            }, 2000);
+        }
+    </script>
+</body>
+</html>
