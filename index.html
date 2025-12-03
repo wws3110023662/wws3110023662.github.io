@@ -1,48 +1,35 @@
-
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AI 粒子表白系统 - 稳定交互版</title>
+    <title>AI 粒子心情系统 - 积极能量版</title>
     <style>
         body { margin: 0; overflow: hidden; background-color: #050505; font-family: 'Microsoft YaHei', sans-serif; }
-        
-        /* 状态显示 HUD */
+                /* 状态显示 HUD */
         #hud-panel {
             position: absolute; top: 20px; left: 20px; 
             background: rgba(0, 0, 0, 0.6); padding: 15px; border-radius: 8px;
-            border: 1px solid rgba(0, 255, 255, 0.3);
-            color: #00ffff; pointer-events: none; user-select: none;
+            border: 1px solid rgba(255, 105, 180, 0.3); /* 边框改为粉色系 */
+            color: #ffb6c1; pointer-events: none; user-select: none;
             z-index: 10; width: 220px;
         }
         #hud-status { font-size: 18px; font-weight: bold; margin-bottom: 5px; }
-        #hud-detail { font-size: 12px; color: #aaa; line-height: 1.5; }
+        #hud-detail { font-size: 12px; color: #ffb6c1; line-height: 1.5; }
 
-        /* 输入面板 */
+        /* 移除或隐藏输入面板，但保留位置防止结构错误 */
         #input-panel {
-            position: absolute; bottom: 20px; left: 20px;
-            background: rgba(20, 20, 30, 0.9); padding: 20px; border-radius: 12px;
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            color: white; width: 280px; z-index: 10;
-            transition: opacity 0.3s; opacity: 0.3;
+            display: none; /* 直接隐藏输入面板 */
         }
-        #input-panel:hover { opacity: 1; }
-        input {
-            width: 100%; padding: 8px; margin-bottom: 10px; border-radius: 4px;
-            border: 1px solid #444; background: rgba(0,0,0,0.5); color: white;
-            box-sizing: border-box;
-        }
-        label { font-size: 12px; color: #aaa; display: block; margin-bottom: 5px; }
-        
+
         /* 隐藏的摄像头视频 */
         #video-feed { position: absolute; top: 0; left: 0; opacity: 0; z-index: -1; pointer-events: none; }
-        
+
         /* 加载遮罩 */
         #loader {
             position: absolute; top: 0; left: 0; width: 100%; height: 100%;
             background: #000; display: flex; flex-direction: column;
-            justify-content: center; align-items: center; color: #00ffff; z-index: 999;
+            justify-content: center; align-items: center; color: #ffb6c1; z-index: 999;
             transition: opacity 0.5s;
         }
     </style>
@@ -56,7 +43,7 @@
 <body>
 
     <div id="loader">
-        <h2>系统初始化中...</h2>
+        <h2>粒子心情系统 V2.0</h2>
         <p>正在启动摄像头与 AI 模型</p>
         <p style="font-size:12px; color:#666">请确保使用 https 或 localhost 访问</p>
     </div>
@@ -64,21 +51,15 @@
     <div id="hud-panel">
         <div id="hud-status">等待手势...</div>
         <div id="hud-detail">
-            👆 单指：第一个字<br>
-            ✌️ 双指：第二个字<br>
+            👆 单指：樱花+开开心心<br>
+            ✌️ 双指：樱花+好好爱自己<br>
+            🤟 三指：花瓣+今天很哇塞<br>
             🖐 张手：变爱心<br>
-            ✊ 握拳：爆炸表白
+            ✊ 握拳：爆炸+我真的很棒
         </div>
     </div>
 
-    <div id="input-panel">
-        <label>名字</label>
-        <input type="text" id="input-name" value="李宁">
-        <label>表白内容</label>
-        <input type="text" id="input-msg" value="我永远爱你">
-        <div style="font-size:10px; color:#666; margin-top:5px;">* 鼠标悬停可修改内容</div>
-    </div>
-
+    <div id="input-panel"></div> 
     <video id="video-feed" playsinline></video>
 
 <script>
@@ -90,20 +71,36 @@
     let scene, camera, renderer, particles;
     let particlePositions, colors, targetPositions;
     let geometry;
-    
+        
     // 状态控制
     let isExploding = false;
     let explosionVelocities = [];
-    let isTextState = false; // 控制是否需要智能回正
-
+    let isTextState = false; 
+    
     // 画布相关
     const canvas = document.createElement('canvas');
     const ctx = canvas.getContext('2d');
-
+    
     // 手势状态机
     let lastGesture = 'none';
     let gestureFrameCount = 0;
     const GESTURE_THRESHOLD = 10; 
+
+    // --- 新增预设文本 ---
+    const PRESET_TEXTS = {
+        'one': '开开心心',
+        'two': '好好爱自己',
+        'three': '今天很哇塞',
+        'fist': '我真的很棒'
+    };
+
+    // --- 新增预设颜色 ---
+    const PRESET_COLORS = {
+        'cherry': 0xff69b4, // 樱花粉
+        'petal': 0xff4500,  // 花瓣红
+        'heart': 0xff0044, // 爱心红
+        'final': 0x00ffff   // 最终文字青色
+    };
 
     // 启动入口
     initThree();
@@ -111,7 +108,7 @@
     animate();
 
     // =========================================================
-    // 1. THREE.JS 粒子系统部分
+    // 1. THREE.JS 粒子系统部分 (大部分保持不变)
     // =========================================================
     function initThree() {
         scene = new THREE.Scene();
@@ -161,14 +158,13 @@
         scene.add(particles);
     }
 
-    // --- 智能文字转粒子算法 ---
+    // --- 智能文字转粒子算法 (保持不变) ---
     function getTextPositions(textStr, fontSize = 100) {
         ctx.font = `bold ${fontSize}px "Microsoft YaHei"`;
         const textWidth = Math.ceil(ctx.measureText(textStr).width);
-        
         const dynamicWidth = textWidth + 60; 
         const dynamicHeight = Math.max(fontSize * 1.5, 200);
-        
+
         canvas.width = dynamicWidth;
         canvas.height = dynamicHeight;
 
@@ -214,13 +210,13 @@
         return points;
     }
 
-    // --- 变形核心逻辑 ---
+    // --- 变形核心逻辑 (保持不变) ---
     function morphTo(newPoints, colorHex, isText = false) {
         isExploding = false;
         isTextState = isText; 
-        
+                
         const colorObj = new THREE.Color(colorHex);
-        
+
         for (let i = 0; i < PARTICLE_COUNT; i++) {
             if (i < newPoints.length) {
                 targetPositions[i*3] = newPoints[i].x;
@@ -249,36 +245,29 @@
             .start();
     }
 
-    // --- 预设动作封装 ---
-    function showCharacter(index) {
-        const name = document.getElementById('input-name').value;
-        const char = name[index] || name[name.length-1]; 
-        morphTo(getTextPositions(char, 120), 0x00ffff, true); 
-    }
-    
-    // 【修改】全名功能保留逻辑，但移除了手势触发，可作为备用
-    function showFullName() {
-        const name = document.getElementById('input-name').value;
-        morphTo(getTextPositions(name, 80), 0x00ffff, true);
+    // --- 【修改】动作封装：直接传入预设键值 ---
+    function showPresetText(key, color) {
+        const text = PRESET_TEXTS[key];
+        morphTo(getTextPositions(text, 100), color, true); 
     }
 
     function morphToHeart() {
-        morphTo(getHeartPositions(), 0xff0044, false); 
+        morphTo(getHeartPositions(), PRESET_COLORS.heart, false); 
     }
 
     function calculateSpherePositions() {
         const points = [];
-        for (let i=0; i<5000; i++) {
-             points.push({x:(Math.random()-0.5)*30, y:(Math.random()-0.5)*30, z:(Math.random()-0.5)*30});
+        for (let i=0; i<5000; i++) { 
+            points.push({x:(Math.random()-0.5)*30, y:(Math.random()-0.5)*30, z:(Math.random()-0.5)*30});
         }
-        morphTo(points, 0x00ffff, false);
+        morphTo(points, PRESET_COLORS.final, false);
     }
-    
+
     function explodeAndShowMsg() {
         if (isExploding) return;
         isExploding = true;
         isTextState = false; 
-        
+                
         for(let i=0; i<PARTICLE_COUNT; i++) {
             explosionVelocities[i].x = (Math.random() - 0.5) * 3.5;
             explosionVelocities[i].y = (Math.random() - 0.5) * 3.5;
@@ -286,18 +275,18 @@
         }
 
         setTimeout(() => {
-            const msg = document.getElementById('input-msg').value;
-            morphTo(getTextPositions(msg, 60), 0xff88aa, true); 
+            // 爆炸后显示 “我真的很棒”
+            morphTo(getTextPositions(PRESET_TEXTS.fist, 60), PRESET_COLORS.final, true); 
         }, 1200);
     }
 
     // =========================================================
-    // 2. AI 手势识别部分 (核心修改：移除三指逻辑)
+    // 2. AI 手势识别部分 (核心修改：重新启用三指逻辑)
     // =========================================================
     function initMediaPipe() {
         const videoElement = document.getElementById('video-feed');
         const hands = new Hands({locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`});
-        
+                
         hands.setOptions({
             maxNumHands: 1,
             modelComplexity: 1,
@@ -326,27 +315,27 @@
 
     function onHandsResults(results) {
         let detectedGesture = 'none';
-        
+
         if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
             const lm = results.multiHandLandmarks[0];
             let fingerCount = 0;
-            
-            // 简易手指计数逻辑
+                        
+            // 简易手指计数逻辑 (保持不变)
             if (lm[8].y < lm[6].y) fingerCount++; // 食指
             if (lm[12].y < lm[10].y) fingerCount++; // 中指
             if (lm[16].y < lm[14].y) fingerCount++; // 无名指
             if (lm[20].y < lm[18].y) fingerCount++; // 小指
             if (Math.abs(lm[4].x - lm[0].x) > Math.abs(lm[3].x - lm[0].x)) fingerCount++; // 拇指
 
-            // --- 状态分类 (优化版) ---
+            // --- 【修改】状态分类 (重新启用三指) ---
             if (fingerCount === 0) detectedGesture = 'fist';
             else if (fingerCount === 1) detectedGesture = 'one';
             else if (fingerCount === 2) detectedGesture = 'two';
-            // 【关键修改】 3指 被视为无操作 (死区)，防止误触
-            else if (fingerCount >= 4) detectedGesture = 'open'; // 4指或5指都算张开
+            else if (fingerCount === 3) detectedGesture = 'three'; // 启用三指
+            else if (fingerCount >= 4) detectedGesture = 'open'; 
         }
 
-        // 防抖逻辑
+        // 防抖逻辑 (保持不变)
         if (detectedGesture === lastGesture) {
             gestureFrameCount++;
         } else {
@@ -364,45 +353,46 @@
 
         switch(gesture) {
             case 'one':
-                statusDiv.innerText = "👆 识别：单指";
-                statusDiv.style.color = "#00ffff";
-                showCharacter(0);
+                statusDiv.innerText = "👆 识别：樱花+开开心心";
+                statusDiv.style.color = "#ffb6c1";
+                showPresetText('one', PRESET_COLORS.cherry); // 樱花粉
                 break;
             case 'two':
-                statusDiv.innerText = "✌️ 识别：双指";
-                statusDiv.style.color = "#00ffff";
-                showCharacter(1);
+                statusDiv.innerText = "✌️ 识别：樱花+好好爱自己";
+                statusDiv.style.color = "#ffb6c1";
+                showPresetText('two', PRESET_COLORS.cherry); // 樱花粉
                 break;
-            // 已移除 case 'three'
+            case 'three':
+                statusDiv.innerText = "🤟 识别：花瓣+今天很哇塞";
+                statusDiv.style.color = "#ff4500";
+                showPresetText('three', PRESET_COLORS.petal); // 花瓣红
+                break;
             case 'open':
-                statusDiv.innerText = "🖐 识别：张手";
+                statusDiv.innerText = "🖐 识别：变爱心";
                 statusDiv.style.color = "#ff0044";
                 morphToHeart();
                 break;
             case 'fist':
-                statusDiv.innerText = "✊ 识别：握拳";
-                statusDiv.style.color = "#ffaa00";
+                statusDiv.innerText = "✊ 识别：爆炸+我真的很棒";
+                statusDiv.style.color = PRESET_COLORS.final;
                 explodeAndShowMsg();
                 break;
         }
     }
 
     // =========================================================
-    // 3. 动画循环 (含智能旋转逻辑)
+    // 3. 动画循环 (保持不变)
     // =========================================================
     function animate() {
         requestAnimationFrame(animate);
         TWEEN.update();
 
         const positions = geometry.attributes.position.array;
-        
-        // --- 智能旋转逻辑 ---
+                
         if (isTextState) {
-            // 文字状态：平滑回正 + 微幅呼吸摆动
             const targetRotation = Math.sin(Date.now() * 0.001) * 0.2;
             particles.rotation.y += (targetRotation - particles.rotation.y) * 0.05;
         } else {
-            // 非文字状态：全景匀速旋转
             particles.rotation.y += 0.002;
             particles.rotation.y = particles.rotation.y % (Math.PI * 2);
         }
