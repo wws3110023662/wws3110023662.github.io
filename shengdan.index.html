@@ -1,0 +1,324 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🎄 圣诞手势互动庆典 🎁</title>
+    <style>
+        /* 基础样式重置 */
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        /* 页面整体样式 */
+        .christmas-page {
+            height: 100vh;
+            width: 100%;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            position: relative;
+            overflow: hidden;
+            background: linear-gradient(135deg, #0a2e38 0%, #1a1a2e 100%);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        /* 视频/Canvas 容器：用于显示摄像头画面和手部追踪 */
+        .camera-container {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 1;
+            /* 调整不透明度，让背景视频/渐变透出来 */
+            opacity: 0.5; 
+        }
+        
+        /* 隐藏原始视频，改用摄像头视频 */
+        .video-background {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            filter: brightness(0.7);
+            z-index: 0; /* 保持在最底层 */
+        }
+
+        /* 摄像头视频流和 Canvas 覆盖 */
+        #webcamVideo, #handCanvas {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            transform: scaleX(-1); /* 镜像翻转，让用户感觉更自然 */
+        }
+        
+        /* 主要内容区域 */
+        .main-content {
+            position: relative;
+            z-index: 3; /* 确保内容在雪花和摄像头画面之上 */
+            text-align: center;
+            color: white;
+            padding: 20px;
+        }
+
+        /* 互动元素样式 */
+        #interaction-display {
+            font-size: 3rem;
+            min-height: 4rem; /* 确保有足够的空间 */
+            opacity: 0;
+            transition: opacity 0.5s ease-in-out, transform 0.5s ease-in-out;
+        }
+
+        /* 圣诞树动画 */
+        .tree-animate {
+            font-size: 10rem !important;
+            color: #4CAF50; /* 绿色 */
+            text-shadow: 0 0 20px rgba(76, 175, 80, 0.8);
+            transform: scale(1.1) rotate(5deg);
+        }
+
+        /* 文字样式 */
+        .text-animate {
+            font-size: 4rem !important;
+            font-weight: bold;
+            color: #E53935; /* 红色 */
+            text-shadow: 0 0 15px rgba(229, 57, 53, 0.7);
+            transform: scale(1.05);
+        }
+        
+        /* 雪花效果 (与原代码保持一致) */
+        .snowflake {
+            position: absolute;
+            color: white;
+            font-size: 1.5rem;
+            user-select: none;
+            z-index: 2; 
+            text-shadow: 0 0 5px rgba(255, 255, 255, 0.7);
+            animation: fall linear infinite;
+        }
+
+        @keyframes fall {
+            to {
+                transform: translateY(100vh) rotate(360deg);
+            }
+        }
+    </style>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision/vision_bundle.js" crossorigin="anonymous"></script>
+</head>
+
+<body>
+    <div class="christmas-page">
+        
+        <video class="video-background" autoplay muted loop playsinline>
+            <source src="圣诞快乐.mp4" type="video/mp4">
+            您的浏览器不支持视频播放
+        </video>
+
+        <div class="camera-container">
+            <video id="webcamVideo" autoplay playsinline style="display: none;"></video>
+            <canvas id="handCanvas"></canvas>
+        </div>
+        
+        <div class="main-content">
+            <p id="interaction-display">等待手势...</p>
+            <p id="status-message" style="font-size: 1.2rem; margin-top: 20px;">请授权摄像头权限</p>
+        </div>
+    </div>
+    
+    <script>
+        // --- I. 雪花效果初始化 (您的原始代码) ---
+        function createSnowflakes() {
+            const snowflakesContainer = document.createElement('div');
+            snowflakesContainer.className = 'snowflakes-container';
+            document.querySelector('.christmas-page').appendChild(snowflakesContainer);
+            
+            const snowflakeSymbols = ['❄', '❅', '❆', '•', '*'];
+            
+            for (let i = 0; i < 80; i++) {
+                const snowflake = document.createElement('div');
+                snowflake.className = 'snowflake';
+                snowflake.textContent = snowflakeSymbols[Math.floor(Math.random() * snowflakeSymbols.length)];
+                
+                snowflake.style.left = Math.random() * 100 + 'vw';
+                const size = Math.random() * 1.5 + 0.8;
+                snowflake.style.fontSize = size + 'rem';
+                snowflake.style.opacity = Math.random() * 0.7 + 0.3;
+                
+                const duration = Math.random() * 10 + 5;
+                snowflake.style.animationDuration = duration + 's';
+                snowflake.style.animationDelay = Math.random() * 5 + 's';
+                
+                snowflakesContainer.appendChild(snowflake);
+            }
+        }
+        
+        // --- II. 手势识别和交互逻辑 ---
+        
+        const { HandLandmarker, FilesetResolver } = window.MediaPipeTasksVision;
+        
+        const video = document.getElementById('webcamVideo');
+        const canvasElement = document.getElementById('handCanvas');
+        const canvasCtx = canvasElement.getContext('2d');
+        const interactionDisplay = document.getElementById('interaction-display');
+        const statusMessage = document.getElementById('status-message');
+
+        let handLandmarker;
+        let lastVideoTime = -1;
+        let runningMode = "VIDEO";
+
+        // 1. 加载手部模型
+        async function createHandLandmarker() {
+            const filesetResolver = await FilesetResolver.forVisionTasks(
+                "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.0/wasm"
+            );
+            handLandmarker = await HandLandmarker.create(filesetResolver, {
+                baseOptions: {
+                    modelAssetPath: `https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task`,
+                    delegate: "GPU"
+                },
+                runningMode: runningMode,
+                numHands: 1
+            });
+            statusMessage.textContent = '模型加载完成，请授予摄像头权限...';
+            enableCam();
+        }
+
+        // 2. 启用摄像头
+        function enableCam() {
+            if (!handLandmarker) {
+                statusMessage.textContent = "手部模型尚未加载。";
+                return;
+            }
+
+            // 获取摄像头权限
+            navigator.mediaDevices.getUserMedia({ video: true })
+                .then((stream) => {
+                    video.srcObject = stream;
+                    video.addEventListener("loadeddata", predictWebcam);
+                    statusMessage.textContent = '摄像头已启动。';
+                    // 确保 Canvas 尺寸匹配视频
+                    video.onloadedmetadata = () => {
+                        canvasElement.width = video.videoWidth;
+                        canvasElement.height = video.videoHeight;
+                    };
+                })
+                .catch((err) => {
+                    statusMessage.textContent = `无法访问摄像头: ${err.message}.`;
+                });
+        }
+
+        // 3. 实时预测
+        function predictWebcam() {
+            let startTimeMs = performance.now();
+            let results;
+
+            if (lastVideoTime !== video.currentTime) {
+                lastVideoTime = video.currentTime;
+                results = handLandmarker.detectForVideo(video, lastVideoTime);
+            }
+
+            // 绘制手部标记 (可选)
+            canvasCtx.save();
+            canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
+
+            if (results.landmarks && results.landmarks.length > 0) {
+                // MediaPipe 提供的绘制函数
+                // for (const landmarks of results.landmarks) {
+                //     drawConnectors(canvasCtx, landmarks, HAND_CONNECTIONS, { color: "#00FF00", lineWidth: 5 });
+                //     drawLandmarks(canvasCtx, landmarks, { color: "#FF0000", lineWidth: 2 });
+                // }
+                
+                // 仅检测手势
+                const handLandmarks = results.landmarks[0];
+                const gesture = recognizeGesture(handLandmarks);
+                
+                handleGestureInteraction(gesture);
+
+            } else {
+                // 未检测到手
+                handleGestureInteraction(null);
+            }
+
+            canvasCtx.restore();
+
+            // 持续调用预测
+            window.requestAnimationFrame(predictWebcam);
+        }
+
+        // 4. 简单手势识别逻辑
+        function recognizeGesture(landmarks) {
+            // 使用手指尖的Y坐标来判断是否弯曲
+            // 拇指尖 (4), 食指尖 (8), 中指尖 (12), 无名指尖 (16), 小指尖 (20)
+            
+            const fingerTips = [8, 12, 16, 20]; // 食指到小指的指尖
+            const metacarpals = [5, 9, 13, 17]; // 对应的指根
+            const thumbTip = landmarks[4];
+            const thumbBase = landmarks[2];
+
+            let fingersExtended = 0;
+            
+            // 检查食指到小指是否伸直（指尖Y坐标高于或接近指根Y坐标）
+            for (let i = 0; i < fingerTips.length; i++) {
+                const tipY = landmarks[fingerTips[i]].y;
+                const metacarpalY = landmarks[metacarpals[i]].y;
+                // 阈值判断：如果指尖Y坐标显著低于指根Y坐标，则认为是弯曲/握拳
+                if (tipY < metacarpalY - 0.05) { // 伸直
+                    fingersExtended++;
+                }
+            }
+
+            // 检查拇指是否伸直（拇指尖X坐标在拇指根部X坐标的一侧）
+            // 这是一个简化的检查，通常需要更多几何判断
+            const thumbExtended = Math.abs(thumbTip.x - thumbBase.x) > 0.05; 
+            if (thumbExtended) {
+                 // 拇指伸直判断
+            }
+
+            // 握拳 (Closed Fist): 大部分手指没有伸直 (小于 2 个伸直)
+            if (fingersExtended < 2) {
+                return 'CLOSED_FIST';
+            } 
+            
+            // 张开手掌 (Open Palm): 大部分手指伸直 (4 个或更多伸直)
+            if (fingersExtended >= 4) {
+                return 'OPEN_PALM';
+            }
+            
+            return 'UNKNOWN'; // 无法识别
+        }
+
+        // 5. 处理手势与页面交互
+        function handleGestureInteraction(gesture) {
+            interactionDisplay.style.opacity = '1';
+            interactionDisplay.className = ''; // 重置动画类
+            
+            if (gesture === 'OPEN_PALM') {
+                interactionDisplay.textContent = '🎄';
+                interactionDisplay.classList.add('tree-animate');
+                statusMessage.textContent = '手掌打开：圣诞树出现！';
+            } else if (gesture === 'CLOSED_FIST') {
+                interactionDisplay.textContent = '圣诞快乐';
+                interactionDisplay.classList.add('text-animate');
+                statusMessage.textContent = '握拳：圣诞快乐！';
+            } else {
+                // 没有识别到手势或手势不清
+                interactionDisplay.textContent = '等待手势...';
+                interactionDisplay.style.opacity = '0.5';
+                statusMessage.textContent = '正在等待手势（张开手掌/握拳）...';
+            }
+        }
+        
+        // --- III. 初始化页面 ---
+        document.addEventListener('DOMContentLoaded', function() {
+            createSnowflakes(); // 启动雪花
+            createHandLandmarker(); // 启动手势识别
+        });
+    </script>
+</body>
+</html>
